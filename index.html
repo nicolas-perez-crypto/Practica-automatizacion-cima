@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Demo — Detección automática de leads con IA</title>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
 <style>
   :root{
     --bg: #14171a;
@@ -76,6 +77,10 @@
   .wa-time{font-size:9.5px; color:#8fa89f; text-align:right; margin-top:4px;}
 
   .empty{color:var(--text-dim); font-size:13px; text-align:center; padding:30px 10px;}
+  .inbox-item{background:var(--bg-panel-2); border:1px solid var(--border); border-radius:9px; padding:10px 12px; cursor:pointer; transition:border-color .15s;}
+  .inbox-item:hover{border-color:var(--gold);}
+  .inbox-item .subj{font-size:13px; font-weight:700; margin-bottom:2px;}
+  .inbox-item .meta{font-size:11px; color:var(--text-dim);}
   .footnote{font-size:11.5px; color:var(--text-dim); margin-top:18px; line-height:1.6; border-top:1px solid var(--border); padding-top:14px;}
   .footnote strong{color:var(--text);}
 </style>
@@ -100,20 +105,36 @@
   </div>
 
   <div class="card">
-    <h3>Tu clave de API gratis (Google Gemini)</h3>
-    <div class="hint">Esta versión usa Gemini en vez de Claude, porque tiene un nivel gratis real: <strong style="color:var(--text);">sin tarjeta de crédito, sin depósito, sin costo</strong>. Consigue tu clave en <strong style="color:var(--text);">aistudio.google.com/apikey</strong> → inicia sesión con tu cuenta de Google → "Create API Key". Toma 30 segundos. Tu clave nunca se guarda ni se envía a ningún lado más que directo a Google desde tu navegador.</div>
+    <h3>1. Conecta tu Gmail</h3>
+    <div class="hint">Esto le da permiso a esta página, solo para <strong style="color:var(--text);">leer</strong> tu correo (no puede borrar, enviar ni modificar nada). El permiso queda solo en tu navegador — nadie más lo ve.</div>
+    <div class="btn-row">
+      <button class="btn-primary" id="btnConnectGmail">🔐 Conectar con Gmail</button>
+      <span class="status-text" id="gmailStatus">No conectado</span>
+    </div>
+    <div id="inboxSection" style="display:none; margin-top:16px;">
+      <div class="btn-row" style="margin-top:0;">
+        <button class="btn-primary" id="btnFetchInbox">📥 Buscar correos recientes</button>
+        <span class="status-text" id="fetchStatus"></span>
+      </div>
+      <div id="inboxList" style="margin-top:12px; display:flex; flex-direction:column; gap:8px;"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>2. Tu clave gratis de IA (Gemini)</h3>
+    <div class="hint">Sin tarjeta, sin costo. Consíguela en <strong style="color:var(--text);">aistudio.google.com/apikey</strong> → "Create API Key".</div>
     <input type="password" id="apiKeyInput" placeholder="AIzaSy..." style="width:100%; background:var(--bg-panel-2); border:1px solid var(--border); border-radius:9px; color:var(--text); font-family:ui-monospace,Consolas,monospace; font-size:12.5px; padding:11px 12px;">
   </div>
 
   <div class="card">
-    <h3>Correo de notificación del portal</h3>
-    <div class="hint">Usa uno de ejemplo, o pega un correo real que ya te haya llegado.</div>
+    <h3>3. O prueba con un ejemplo / texto pegado</h3>
+    <div class="hint">Si prefieres no conectar el correo todavía, usa esto igual que antes.</div>
     <div class="examples">
       <button class="ex-btn" data-ex="1">📋 Ejemplo: Portal Inmobiliario</button>
       <button class="ex-btn" data-ex="2">📋 Ejemplo: Yapo Propiedades</button>
       <button class="ex-btn" data-ex="3">📋 Ejemplo: correo más informal</button>
     </div>
-    <textarea id="emailInput" placeholder="Pega aquí el correo completo del portal..."></textarea>
+    <textarea id="emailInput" placeholder="Pega aquí el correo completo del portal, o haz clic en un correo de la lista de arriba una vez conectes Gmail..."></textarea>
     <div class="btn-row">
       <button class="btn-primary" id="btnAnalyze">✨ Analizar con IA</button>
       <span class="status-text" id="statusText"></span>
@@ -133,6 +154,101 @@
 </div>
 
 <script>
+const GOOGLE_CLIENT_ID = "1059044092618-o753siodpqtnfosl2cfnvt81m6cins5p.apps.googleusercontent.com";
+let gmailAccessToken = null;
+let tokenClient = null;
+
+function initGoogleAuth(){
+  if(!window.google || !google.accounts){ setTimeout(initGoogleAuth, 300); return; }
+  tokenClient = google.accounts.oauth2.initTokenClient({
+    client_id: GOOGLE_CLIENT_ID,
+    scope: 'https://www.googleapis.com/auth/gmail.readonly',
+    callback: (resp)=>{
+      if(resp.error){ document.getElementById('gmailStatus').textContent = '⚠️ No se pudo conectar: ' + resp.error; return; }
+      gmailAccessToken = resp.access_token;
+      document.getElementById('gmailStatus').textContent = '✅ Conectado a Gmail';
+      document.getElementById('inboxSection').style.display = 'block';
+    }
+  });
+}
+initGoogleAuth();
+
+document.getElementById('btnConnectGmail').addEventListener('click', ()=>{
+  if(!tokenClient){ document.getElementById('gmailStatus').textContent = 'Cargando Google, intenta de nuevo en un segundo...'; return; }
+  tokenClient.requestAccessToken();
+});
+
+function base64UrlDecode(str){
+  str = str.replace(/-/g,'+').replace(/_/g,'/');
+  while(str.length % 4) str += '=';
+  try{ return decodeURIComponent(escape(atob(str))); }
+  catch(e){ return atob(str); }
+}
+
+function extractPlainText(payload){
+  if(!payload) return '';
+  if(payload.mimeType === 'text/plain' && payload.body?.data){
+    return base64UrlDecode(payload.body.data);
+  }
+  if(payload.parts){
+    const plain = payload.parts.find(p=>p.mimeType==='text/plain');
+    if(plain?.body?.data) return base64UrlDecode(plain.body.data);
+    const html = payload.parts.find(p=>p.mimeType==='text/html');
+    if(html?.body?.data) return base64UrlDecode(html.body.data).replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').trim();
+    for(const p of payload.parts){ const nested = extractPlainText(p); if(nested) return nested; }
+  }
+  if(payload.body?.data) return base64UrlDecode(payload.body.data);
+  return '';
+}
+
+document.getElementById('btnFetchInbox').addEventListener('click', async ()=>{
+  const fetchStatus = document.getElementById('fetchStatus');
+  const inboxList = document.getElementById('inboxList');
+  fetchStatus.textContent = 'Buscando correos recientes...';
+  inboxList.innerHTML = '';
+  try{
+    const q = encodeURIComponent('newer_than:30d');
+    const listRes = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages?q=${q}&maxResults=15`, {
+      headers: { Authorization: `Bearer ${gmailAccessToken}` }
+    });
+    if(!listRes.ok) throw new Error('No se pudo listar correos (HTTP ' + listRes.status + ')');
+    const listData = await listRes.json();
+    const messages = listData.messages || [];
+    if(!messages.length){
+      inboxList.innerHTML = '<div class="empty">No se encontraron correos recientes.</div>';
+      fetchStatus.textContent = '';
+      return;
+    }
+    fetchStatus.textContent = `${messages.length} correos encontrados. Cargando detalles...`;
+
+    const details = await Promise.all(messages.map(m=>
+      fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${m.id}?format=full`, {
+        headers: { Authorization: `Bearer ${gmailAccessToken}` }
+      }).then(r=>r.json())
+    ));
+
+    inboxList.innerHTML = '';
+    details.forEach(msg=>{
+      const headers = msg.payload?.headers || [];
+      const subject = headers.find(h=>h.name==='Subject')?.value || '(sin asunto)';
+      const from = headers.find(h=>h.name==='From')?.value || '';
+      const div = document.createElement('div');
+      div.className = 'inbox-item';
+      div.innerHTML = `<div class="subj">${escapeHtml(subject)}</div><div class="meta">${escapeHtml(from)}</div>`;
+      div.addEventListener('click', ()=>{
+        const bodyText = extractPlainText(msg.payload) || msg.snippet || '';
+        document.getElementById('emailInput').value = `De: ${from}\nAsunto: ${subject}\n\n${bodyText}`.trim();
+        document.getElementById('emailInput').scrollIntoView({behavior:'smooth', block:'center'});
+      });
+      inboxList.appendChild(div);
+    });
+    fetchStatus.textContent = `${messages.length} correos cargados. Haz clic en uno para analizarlo.`;
+  } catch(err){
+    console.error(err);
+    fetchStatus.textContent = '⚠️ ' + err.message;
+  }
+});
+
 const examples = {
   1: `De: notificaciones@portalinmobiliario.com
 Asunto: Nuevo contacto interesado en tu publicación
