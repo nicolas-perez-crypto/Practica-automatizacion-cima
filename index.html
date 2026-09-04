@@ -178,26 +178,47 @@ document.getElementById('btnConnectGmail').addEventListener('click', ()=>{
   tokenClient.requestAccessToken();
 });
 
-function base64UrlDecode(str){
+function base64UrlToBinaryString(str){
   str = str.replace(/-/g,'+').replace(/_/g,'/');
   while(str.length % 4) str += '=';
-  try{ return decodeURIComponent(escape(atob(str))); }
-  catch(e){ return atob(str); }
+  return atob(str);
 }
-
+function decodeQuotedPrintable(binaryStr){
+  let s = binaryStr.replace(/=\r?\n/g,'');
+  s = s.replace(/=([A-Fa-f0-9]{2})/g, (m,h)=>String.fromCharCode(parseInt(h,16)));
+  try{ return decodeURIComponent(escape(s)); } catch(e){ return s; }
+}
+function getHeaderValue(part, name){
+  return (part.headers||[]).find(h=>h.name && h.name.toLowerCase()===name.toLowerCase())?.value || '';
+}
+function decodePartBody(part){
+  if(!part.body?.data) return '';
+  const binary = base64UrlToBinaryString(part.body.data);
+  const encoding = getHeaderValue(part, 'Content-Transfer-Encoding').toLowerCase();
+  if(encoding === 'quoted-printable') return decodeQuotedPrintable(binary);
+  try{ return decodeURIComponent(escape(binary)); } catch(e){ return binary; }
+}
+function findPartByMime(node, mime){
+  if(!node) return null;
+  if(node.mimeType === mime && node.body?.data) return node;
+  if(node.parts){ for(const p of node.parts){ const found = findPartByMime(p, mime); if(found) return found; } }
+  return null;
+}
 function extractPlainText(payload){
   if(!payload) return '';
-  if(payload.mimeType === 'text/plain' && payload.body?.data){
-    return base64UrlDecode(payload.body.data);
+  const plainPart = findPartByMime(payload, 'text/plain');
+  if(plainPart) return decodePartBody(plainPart).trim();
+  const htmlPart = findPartByMime(payload, 'text/html');
+  if(htmlPart){
+    return decodePartBody(htmlPart)
+      .replace(/<style[\s\S]*?<\/style>/gi,' ')
+      .replace(/<script[\s\S]*?<\/script>/gi,' ')
+      .replace(/<[^>]+>/g,' ')
+      .replace(/&nbsp;/g,' ')
+      .replace(/\s+/g,' ')
+      .trim();
   }
-  if(payload.parts){
-    const plain = payload.parts.find(p=>p.mimeType==='text/plain');
-    if(plain?.body?.data) return base64UrlDecode(plain.body.data);
-    const html = payload.parts.find(p=>p.mimeType==='text/html');
-    if(html?.body?.data) return base64UrlDecode(html.body.data).replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').trim();
-    for(const p of payload.parts){ const nested = extractPlainText(p); if(nested) return nested; }
-  }
-  if(payload.body?.data) return base64UrlDecode(payload.body.data);
+  if(payload.body?.data) return decodePartBody(payload).trim();
   return '';
 }
 
