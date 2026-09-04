@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Demo — Detección automática de leads con IA</title>
+<style>
+  :root{
+    --bg: #14171a;
+    --bg-panel: #1c2024;
+    --bg-panel-2: #22262b;
+    --bg-panel-3: #282d33;
+    --border: #2c3136;
+    --text: #e9ebed;
+    --text-dim: #9aa1a8;
+    --gold: #c9a15a;
+    --gold-bg: rgba(201,161,90,.13);
+    --green: #4caf7d;
+    --green-bg: rgba(76,175,125,.13);
+    --blue: #5a9bd9;
+    --blue-bg: rgba(90,155,217,.13);
+    --font-ui: -apple-system, "Segoe UI", Inter, Roboto, Arial, sans-serif;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0; background:var(--bg); color:var(--text); font-family:var(--font-ui);
+    padding:28px 18px 60px; min-height:100vh;
+  }
+  .wrap{max-width:900px; margin:0 auto;}
+  .top{margin-bottom:24px;}
+  .eyebrow{color:var(--gold); font-size:12.5px; font-weight:700; letter-spacing:.2px; margin-bottom:6px;}
+  h1{margin:0 0 6px; font-size:23px; font-weight:800;}
+  .sub{color:var(--text-dim); font-size:13.5px; line-height:1.5; max-width:640px;}
+  .stage{display:flex; gap:8px; align-items:center; margin:22px 0 16px; flex-wrap:wrap;}
+  .stage-step{display:flex; align-items:center; gap:7px; font-size:12px; color:var(--text-dim); padding:6px 12px; border-radius:999px; background:var(--bg-panel-2); border:1px solid var(--border);}
+  .stage-step.done{color:var(--green); border-color:rgba(76,175,125,.35); background:var(--green-bg);}
+  .stage-step.active{color:var(--gold); border-color:rgba(201,161,90,.4); background:var(--gold-bg);}
+  .stage-arrow{color:var(--border); font-size:13px;}
+
+  .card{background:var(--bg-panel); border:1px solid var(--border); border-radius:14px; padding:20px; margin-bottom:18px;}
+  .card h3{margin:0 0 4px; font-size:15px; font-weight:750;}
+  .card .hint{color:var(--text-dim); font-size:12.5px; margin-bottom:14px;}
+
+  .examples{display:flex; gap:8px; flex-wrap:wrap; margin-bottom:14px;}
+  .ex-btn{background:var(--bg-panel-2); border:1px solid var(--border); color:var(--text); font-size:12px; padding:8px 13px; border-radius:9px; cursor:pointer; transition:border-color .15s;}
+  .ex-btn:hover{border-color:var(--gold);}
+
+  textarea{width:100%; min-height:150px; background:var(--bg-panel-2); border:1px solid var(--border); border-radius:10px; color:var(--text); font-family:ui-monospace,Consolas,monospace; font-size:12.5px; padding:12px; resize:vertical; line-height:1.5;}
+  textarea:focus{outline:none; border-color:var(--gold);}
+
+  .btn-row{display:flex; gap:10px; margin-top:14px; align-items:center; flex-wrap:wrap;}
+  .btn-primary{background:var(--gold); color:#20180a; border:none; font-weight:700; font-size:13px; padding:11px 20px; border-radius:9px; cursor:pointer;}
+  .btn-primary:disabled{opacity:.5; cursor:default;}
+  .btn-primary:hover:not(:disabled){filter:brightness(1.06);}
+  .status-text{font-size:12.5px; color:var(--text-dim);}
+
+  .result-grid{display:grid; grid-template-columns:1fr; gap:16px;}
+  @media(min-width:720px){ .result-grid{grid-template-columns:1fr 1fr;} }
+
+  .lead-card{background:var(--bg-panel-2); border:1px solid var(--border); border-left:4px solid var(--gold); border-radius:12px; padding:16px;}
+  .lead-top{display:flex; gap:11px; align-items:center; margin-bottom:12px;}
+  .avatar{width:40px; height:40px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-weight:800; font-size:14px; color:#fff; flex:0 0 auto;}
+  .lead-name{font-size:15px; font-weight:750;}
+  .lead-phone{font-size:12px; color:var(--text-dim); margin-top:2px;}
+  .badge{display:inline-flex; align-items:center; gap:5px; padding:4px 10px; border-radius:999px; font-size:11px; font-weight:700; background:var(--green-bg); color:var(--green); margin-left:auto;}
+  .lead-row{display:flex; gap:8px; font-size:12.5px; margin-top:9px; align-items:center; flex-wrap:wrap;}
+  .lead-row .k{color:var(--text-dim); min-width:88px;}
+  .lead-prop{background:var(--bg-panel-3); border-radius:8px; padding:9px 11px; font-size:12.5px; margin-top:10px;}
+
+  .wa-mock{background:#0b141a; border:1px solid var(--border); border-radius:12px; padding:14px; display:flex; flex-direction:column; height:100%;}
+  .wa-head{display:flex; align-items:center; gap:9px; padding-bottom:10px; border-bottom:1px solid #1f2c33; margin-bottom:12px;}
+  .wa-head .avatar{width:30px; height:30px; font-size:11px;}
+  .wa-head-name{font-size:13px; font-weight:700;}
+  .wa-head-sub{font-size:10.5px; color:#7d8c93;}
+  .wa-bubble{align-self:flex-end; max-width:88%; background:#025c4c; color:#e9edef; padding:9px 11px 7px; border-radius:10px; border-top-right-radius:3px; font-size:12.5px; line-height:1.5; white-space:pre-wrap;}
+  .wa-time{font-size:9.5px; color:#8fa89f; text-align:right; margin-top:4px;}
+
+  .empty{color:var(--text-dim); font-size:13px; text-align:center; padding:30px 10px;}
+  .footnote{font-size:11.5px; color:var(--text-dim); margin-top:18px; line-height:1.6; border-top:1px solid var(--border); padding-top:14px;}
+  .footnote strong{color:var(--text);}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="top">
+    <div class="eyebrow">DEMO · CIMA PROPIEDADES</div>
+    <h1>Detección automática de leads con IA</h1>
+    <div class="sub">Pega (o elige) un correo de notificación de un portal inmobiliario. La IA lee el texto de verdad, extrae los datos del cliente, y muestra cómo quedaría el contacto creado y el primer mensaje de WhatsApp.</div>
+  </div>
+
+  <div class="stage" id="stageBar">
+    <div class="stage-step active" data-step="1">1. Llega el correo</div>
+    <span class="stage-arrow">→</span>
+    <div class="stage-step" data-step="2">2. La IA lo lee</div>
+    <span class="stage-arrow">→</span>
+    <div class="stage-step" data-step="3">3. Se crea el contacto</div>
+    <span class="stage-arrow">→</span>
+    <div class="stage-step" data-step="4">4. WhatsApp inicial</div>
+  </div>
+
+  <div class="card">
+    <h3>Tu clave de API gratis (Google Gemini)</h3>
+    <div class="hint">Esta versión usa Gemini en vez de Claude, porque tiene un nivel gratis real: <strong style="color:var(--text);">sin tarjeta de crédito, sin depósito, sin costo</strong>. Consigue tu clave en <strong style="color:var(--text);">aistudio.google.com/apikey</strong> → inicia sesión con tu cuenta de Google → "Create API Key". Toma 30 segundos. Tu clave nunca se guarda ni se envía a ningún lado más que directo a Google desde tu navegador.</div>
+    <input type="password" id="apiKeyInput" placeholder="AIzaSy..." style="width:100%; background:var(--bg-panel-2); border:1px solid var(--border); border-radius:9px; color:var(--text); font-family:ui-monospace,Consolas,monospace; font-size:12.5px; padding:11px 12px;">
+  </div>
+
+  <div class="card">
+    <h3>Correo de notificación del portal</h3>
+    <div class="hint">Usa uno de ejemplo, o pega un correo real que ya te haya llegado.</div>
+    <div class="examples">
+      <button class="ex-btn" data-ex="1">📋 Ejemplo: Portal Inmobiliario</button>
+      <button class="ex-btn" data-ex="2">📋 Ejemplo: Yapo Propiedades</button>
+      <button class="ex-btn" data-ex="3">📋 Ejemplo: correo más informal</button>
+    </div>
+    <textarea id="emailInput" placeholder="Pega aquí el correo completo del portal..."></textarea>
+    <div class="btn-row">
+      <button class="btn-primary" id="btnAnalyze">✨ Analizar con IA</button>
+      <span class="status-text" id="statusText"></span>
+    </div>
+  </div>
+
+  <div class="card" id="resultsCard" style="display:none;">
+    <h3>Resultado</h3>
+    <div class="hint">Esto es lo que quedaría guardado en el CRM automáticamente, sin que nadie lo escriba a mano.</div>
+    <div class="result-grid" id="resultsGrid"></div>
+  </div>
+
+  <div class="footnote">
+    <strong>Sobre esta demo:</strong> la lectura y extracción de datos la hace una IA real (Gemini, de Google), llamada en vivo desde este mismo archivo, sin costo — no está inventado ni pre-armado. Lo único simulado es el envío real del WhatsApp (para eso se necesita la cuenta de WhatsApp Business API ya configurada); el mensaje que ves es exactamente el texto que se enviaría. En la versión final para producción se puede usar Gemini, Claude, o cualquier otro modelo — la lógica es la misma.
+  </div>
+
+</div>
+
+<script>
+const examples = {
+  1: `De: notificaciones@portalinmobiliario.com
+Asunto: Nuevo contacto interesado en tu publicación
+
+Hola,
+
+Un usuario dejó sus datos de contacto para la propiedad "Departamento 304 General Novoa 796, Concepción" (Ref #88213).
+
+Nombre: Camila Reyes
+Teléfono: +56 9 8842 1150
+Mensaje del usuario: "Hola, me interesa el depto, está disponible para arriendo o solo venta? y se puede visitar este fin de semana?"
+
+Puedes contactar directamente al usuario para coordinar.
+Equipo Portal Inmobiliario`,
+  2: `De: alertas@yapo.cl
+Asunto: Tienes un nuevo mensaje en tu aviso
+
+Se registró un nuevo contacto para tu aviso "Casa en venta, Chiguayante, 3 dormitorios":
+
+Nombre: Rodrigo Espinoza
+Celular: 56977820044
+
+Mensaje: Buenas tardes, vi la casa en Chiguayante, cual es el valor final y si acepta pie mas credito hipotecario
+
+Responde pronto para no perder al interesado.`,
+  3: `Asunto: Fwd: consulta depto
+
+hola pablo te reenvio esto que me llego
+
+---------- Forwarded message ---------
+De: Marcela Tapia <marcela.tapia88@gmail.com>
+Hola buenas tardes disculpen las molestias, vi el depto que publicaron en ongolmo el de 3d2b, mi numero es +56945671203, queria preguntar si todavia esta disponible y el precio porfa
+gracias
+marcela`
+};
+
+document.querySelectorAll('.ex-btn').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    document.getElementById('emailInput').value = examples[btn.dataset.ex];
+  });
+});
+
+function setStage(n){
+  document.querySelectorAll('.stage-step').forEach(el=>{
+    const step = Number(el.dataset.step);
+    el.classList.remove('active','done');
+    if(step < n) el.classList.add('done');
+    else if(step === n) el.classList.add('active');
+  });
+}
+
+function avatarInitials(name){
+  const parts = String(name||'').trim().split(/\s+/).filter(Boolean);
+  if(!parts.length) return '?';
+  return (parts[0][0] + (parts[1]?parts[1][0]:'')).toUpperCase();
+}
+function avatarColor(name){
+  const palette = ['#c9a15a','#5a9bd9','#4caf7d','#d9614f','#9b7edb','#4fb0c6'];
+  const str = String(name||'x');
+  let hash = 0; for(let i=0;i<str.length;i++){ hash = str.charCodeAt(i) + ((hash<<5)-hash); }
+  return palette[Math.abs(hash)%palette.length];
+}
+function escapeHtml(str){
+  return String(str||'').replace(/[&<>"']/g, ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+}
+
+document.getElementById('btnAnalyze').addEventListener('click', async ()=>{
+  const raw = document.getElementById('emailInput').value.trim();
+  const apiKey = document.getElementById('apiKeyInput').value.trim();
+  const statusText = document.getElementById('statusText');
+  const btn = document.getElementById('btnAnalyze');
+  if(!apiKey){ statusText.textContent = '⚠️ Falta tu clave de API (ver arriba).'; return; }
+  if(!raw){ statusText.textContent = 'Pega o elige un correo de ejemplo primero.'; return; }
+
+  btn.disabled = true;
+  statusText.textContent = '🤖 La IA está leyendo el correo...';
+  setStage(2);
+  document.getElementById('resultsCard').style.display = 'none';
+
+  const prompt = `Eres el sistema de extracción de datos de "Cima Propiedades", una corredora de propiedades en Chile. Te llega el texto de un correo de notificación de un portal inmobiliario (Portal Inmobiliario, Yapo, etc.) o un correo reenviado con una consulta de un cliente.
+
+Extrae la información y responde SOLO con un objeto JSON válido, sin texto antes ni después, sin backticks de markdown, con esta forma exacta:
+{
+  "nombre": "nombre del cliente interesado, o null si no se detecta",
+  "telefono": "teléfono en formato +56 9 XXXX XXXX si se puede detectar, o null",
+  "propiedad": "nombre o descripción breve de la propiedad de interés mencionada, o null",
+  "portal_origen": "Portal Inmobiliario, Yapo, u 'Otro / correo directo' según corresponda",
+  "resumen_consulta": "resumen en una frase corta de qué pregunta o quiere el cliente",
+  "mensaje_whatsapp_sugerido": "un mensaje corto, cálido y profesional en español chileno para iniciar el contacto por WhatsApp con este cliente, mencionando su nombre y la propiedad, y planteando 1-2 preguntas de calificación (ej. si compra para vivir o inversión, o si tiene preaprobación bancaria). Máximo 4 líneas. Firma como 'Equipo Cima Propiedades'."
+}
+
+Correo a analizar:
+"""
+${raw}
+"""`;
+
+  try{
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${encodeURIComponent(apiKey)}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: prompt }] }]
+      })
+    });
+
+    if(!response.ok){
+      const errBody = await response.json().catch(()=>({}));
+      throw new Error(errBody?.error?.message || `Error HTTP ${response.status}`);
+    }
+
+    const data = await response.json();
+    const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+    if(!text) throw new Error('La IA no devolvió una respuesta de texto.');
+
+    let cleaned = text.trim().replace(/^```json\s*/i,'').replace(/^```\s*/,'').replace(/```\s*$/,'');
+    const parsed = JSON.parse(cleaned);
+
+    setStage(3);
+    statusText.textContent = '✅ Datos extraídos correctamente.';
+    renderResults(parsed);
+    setTimeout(()=>setStage(4), 350);
+
+  } catch(err){
+    console.error(err);
+    statusText.textContent = '⚠️ ' + (err.message || 'No se pudo analizar el correo. Revisa tu clave de API.');
+    setStage(1);
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+function renderResults(data){
+  const grid = document.getElementById('resultsGrid');
+  const name = data.nombre || 'Sin nombre detectado';
+  const phone = data.telefono || 'Sin teléfono detectado';
+  const property = data.propiedad || 'Sin propiedad detectada';
+  const portal = data.portal_origen || 'Origen desconocido';
+  const summary = data.resumen_consulta || '';
+  const waMessage = data.mensaje_whatsapp_sugerido || '';
+
+  grid.innerHTML = `
+    <div class="lead-card">
+      <div class="lead-top">
+        <div class="avatar" style="background:${avatarColor(name)};">${escapeHtml(avatarInitials(name))}</div>
+        <div>
+          <div class="lead-name">${escapeHtml(name)}</div>
+          <div class="lead-phone">📞 ${escapeHtml(phone)}</div>
+        </div>
+        <span class="badge">🆕 Primer Contacto</span>
+      </div>
+      <div class="lead-prop">🏠 ${escapeHtml(property)}</div>
+      <div class="lead-row"><span class="k">Canal:</span> ${escapeHtml(portal)}</div>
+      <div class="lead-row"><span class="k">Consulta:</span> ${escapeHtml(summary)}</div>
+      <div class="lead-row"><span class="k">Creado:</span> automáticamente, hace instantes</div>
+    </div>
+    <div class="wa-mock">
+      <div class="wa-head">
+        <div class="avatar" style="background:${avatarColor(name)};">${escapeHtml(avatarInitials(name))}</div>
+        <div>
+          <div class="wa-head-name">${escapeHtml(name)}</div>
+          <div class="wa-head-sub">${escapeHtml(phone)}</div>
+        </div>
+      </div>
+      <div class="wa-bubble">${escapeHtml(waMessage)}<div class="wa-time">Vista previa · no enviado</div></div>
+    </div>
+  `;
+  document.getElementById('resultsCard').style.display = 'block';
+}
+</script>
+</body>
+</html>
